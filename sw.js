@@ -1,4 +1,4 @@
-const VERSION = '1.5.3';
+const VERSION = '1.0.0';
 const CACHE = 'reframe-' + VERSION;
 const ASSETS = [
   './',
