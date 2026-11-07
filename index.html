@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reframe</title>
+<meta name="description" content="施術前後の写真を同じ構図で撮影し、比較・書き出しするツール">
+<meta name="theme-color" content="#0017c1">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Reframe">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h2M10 12h10M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-camera-plus" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><path d="M12 10v6M9 13h6"/></symbol>
+  <symbol id="i-photo" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-6 6-2-2-5 5"/></symbol>
+  <symbol id="i-switch" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6"/><path d="M17.5 2.5v4h-4M6.5 21.5v-4h4"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v8h14v-8"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4"/><path d="M5 20h14"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 20h14"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-hline" viewBox="0 0 24 24"><path d="M3 12h18M7 9v6M17 9v6"/></symbol>
+  <symbol id="i-vline" viewBox="0 0 24 24"><path d="M12 3v18M9 7h6M9 17h6"/></symbol>
+  <symbol id="i-angle" viewBox="0 0 24 24"><path d="M4 20h16M4 20L18 6"/><path d="M10 20a6 6 0 0 0-1.8-4.2"/></symbol>
+  <symbol id="i-blur" viewBox="0 0 24 24"><rect x="4" y="4" width="4" height="4"/><rect x="12" y="4" width="4" height="4"/><rect x="8" y="8" width="4" height="4"/><rect x="16" y="8" width="4" height="4"/><rect x="4" y="12" width="4" height="4"/><rect x="12" y="12" width="4" height="4"/><rect x="8" y="16" width="4" height="4"/><rect x="16" y="16" width="4" height="4"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
+  <symbol id="i-level" viewBox="0 0 24 24"><rect x="2" y="9" width="20" height="6" rx="2"/><circle cx="12" cy="12" r="2"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></symbol>
+  <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M5 15l8-8 6 6-5 5H9z"/><path d="M4 20h16"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-rotate-l" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v5h5"/></symbol>
+  <symbol id="i-rotate-r" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></symbol>
+</svg>
+
+<div id="app">
+
+<!-- ホーム -->
+<section id="s-home" class="screen" hidden>
+  <header class="bar">
+    <div class="bar-spacer"></div>
+    <div class="bar-center"><h1 class="bar-title">Reframe</h1></div>
+    <button class="icon-btn" id="home-settings" aria-label="設定"><svg class="ic"><use href="#i-settings"/></svg></button>
+  </header>
+  <main class="content">
+    <div class="content-narrow">
+      <div class="stack">
+        <button class="btn btn-solid btn-lg btn-block" id="home-before"><svg class="ic"><use href="#i-camera"/></svg>ビフォーを撮る</button>
+        <button class="btn btn-outline btn-lg btn-block" id="home-after"><svg class="ic"><use href="#i-camera-plus"/></svg><span class="btn-2line"><span>アフターを撮る</span><small>ビフォーを選んで重ねる</small></span></button>
+        <button class="btn btn-outline btn-lg btn-block" id="home-compare"><svg class="ic"><use href="#i-photo"/></svg>端末の写真で比較</button>
+      </div>
+      <div class="section-head">
+        <h2>最近のビフォー</h2>
+        <div class="inline-actions"><span class="muted" id="recent-note"></span><button class="btn btn-text btn-sm" id="recent-clear" hidden>すべて削除</button></div>
+      </div>
+      <div id="recent-list" class="recent-grid"></div>
+      <p id="recent-empty" class="muted">まだありません。「ビフォーを撮る」で撮影した写真がここに並びます。</p>
+    </div>
+  </main>
+</section>
+
+<!-- 撮影 -->
+<section id="s-capture" class="screen dark" hidden>
+  <header class="bar">
+    <button class="icon-btn" id="cap-back" aria-label="戻る"><svg class="ic"><use href="#i-back"/></svg></button>
+    <div class="bar-center"><div class="bar-title" id="cap-title">ビフォー撮影</div><div class="bar-sub" id="cap-sub"></div></div>
+    <button class="icon-btn" id="cap-switch" aria-label="カメラ切替"><svg class="ic"><use href="#i-switch"/></svg></button>
+  </header>
+  <div class="chips" id="cap-presets" role="group" aria-label="プリセット"></div>
+  <div class="vf-wrap" id="vf-wrap">
+    <div class="vf" id="vf">
+      <video id="cam" autoplay playsinline muted></video>
+      <img id="ov-img" class="ov" alt="" hidden>
+      <canvas id="ov-edge" class="ov" hidden></canvas>
+      <div id="guides" class="guides"></div>
+      <div class="level-ui" id="level-ui" hidden><div class="level-ref"></div><div class="level-bar" id="level-bar"></div></div>
+      <div class="hud hud-tl" id="hud-level" hidden></div>
+      <div class="hud hud-tr" id="hud-ov" hidden></div>
+      <div class="hud hud-bl" id="hud-ar"></div>
+      <div class="countdown" id="countdown" hidden></div>
+      <div class="flash" id="flash"></div>
+      <div class="cam-msg" id="cam-msg" hidden></div>
+    </div>
+  </div>
+  <div class="cap-controls">
+    <div class="slider-row" id="ov-row" hidden>
+      <label for="ov-opacity">透過</label>
+      <input type="range" id="ov-opacity" min="0" max="100" value="50" step="1">
+      <output for="ov-opacity" id="ov-opacity-val">50%</output>
+    </div>
+    <div class="chips" id="cap-chips">
+      <button class="chip" id="chip-mode" hidden>写真</button>
+      <button class="chip" id="chip-guides" aria-pressed="true">ガイド線</button>
+      <button class="chip" id="chip-timer"><svg class="ic"><use href="#i-timer"/></svg>タイマー オフ</button>
+      <button class="chip" id="chip-level" aria-pressed="false"><svg class="ic"><use href="#i-level"/></svg>水平器</button>
+    </div>
+    <div class="chips" id="cap-views" role="group" aria-label="向き" hidden></div>
+  </div>
+  <div class="cap-bottom">
+    <button class="thumb-btn" id="cap-last" aria-label="直前の写真を見る" hidden><img id="cap-last-img" alt=""></button>
+    <button class="shutter" id="shutter" aria-label="撮影"></button>
+    <button class="icon-btn" id="cap-change-before" aria-label="ビフォーを変更" hidden><svg class="ic"><use href="#i-photo"/></svg></button>
+    <span class="bar-spacer" id="cap-spacer"></span>
+  </div>
+</section>
+
+<!-- 撮影後プレビュー -->
+<section id="s-preview" class="screen dark" hidden>
+  <header class="bar">
+    <button class="icon-btn" id="pv-back" aria-label="戻る"><svg class="ic"><use href="#i-back"/></svg></button>
+    <div class="bar-center"><div class="bar-title" id="pv-title"></div><div class="bar-sub" id="pv-sub"></div></div>
+    <div class="bar-spacer"></div>
+  </header>
+  <div class="pv-img-wrap"><img id="pv-img" alt="撮影した写真"></div>
+  <div class="pv-actions">
+    <button class="btn btn-outline" id="pv-save"><svg class="ic"><use href="#i-download"/></svg>端末に保存</button>
+    <button class="btn btn-outline" id="pv-retake">撮り直す</button>
+    <button class="btn btn-outline" id="pv-adjust" hidden>位置合わせ</button>
+    <button class="btn btn-outline" id="pv-next" hidden>続けて撮る</button>
+    <button class="btn btn-solid btn-lg btn-block" id="pv-primary">比較へ</button>
+  </div>
+</section>
+
+<!-- 位置合わせ -->
+<section id="s-adjust" class="screen dark" hidden>
+  <header class="bar">
+    <button class="icon-btn" id="adj-back" aria-label="戻る"><svg class="ic"><use href="#i-back"/></svg></button>
+    <div class="bar-center"><div class="bar-title">位置合わせ</div><div class="bar-sub">ドラッグで移動、2本指で拡大・回転</div></div>
+    <div class="bar-spacer"></div>
+  </header>
+  <div class="vf-wrap"><canvas id="adj-canvas" class="adj-canvas"></canvas></div>
+  <div class="slider-row">
+    <label for="adj-opacity">アフターの透過</label>
+    <input type="range" id="adj-opacity" min="10" max="100" value="60" step="1">
+    <output for="adj-opacity" id="adj-opacity-val">60%</output>
+  </div>
+  <div class="adj-tools">
+    <button class="icon-btn" id="adj-zoom-out" aria-label="縮小"><svg class="ic"><use href="#i-minus"/></svg></button>
+    <button class="icon-btn" id="adj-zoom-in" aria-label="拡大"><svg class="ic"><use href="#i-plus"/></svg></button>
+    <button class="icon-btn" id="adj-rot-l" aria-label="左に回転"><svg class="ic"><use href="#i-rotate-l"/></svg></button>
+    <button class="icon-btn" id="adj-rot-r" aria-label="右に回転"><svg class="ic"><use href="#i-rotate-r"/></svg></button>
+    <button class="icon-btn" id="adj-reset" aria-label="リセット"><svg class="ic"><use href="#i-reset"/></svg></button>
+  </div>
+  <div class="pv-actions">
+    <button class="btn btn-outline" id="adj-cancel">戻る</button>
+    <button class="btn btn-solid" id="adj-ok">確定して比較へ</button>
+  </div>
+</section>
+
+<!-- ビフォー選択 -->
+<section id="s-select" class="screen" hidden>
+  <header class="bar">
+    <button class="icon-btn" id="sel-back" aria-label="戻る"><svg class="ic"><use href="#i-back"/></svg></button>
+    <div class="bar-center"><div class="bar-title">ビフォーを選ぶ</div><div class="bar-sub">選んだ写真を重ねてアフターを撮ります</div></div>
+    <div class="bar-spacer"></div>
+  </header>
+  <main class="content">
+    <div class="content-narrow">
+      <button class="btn btn-outline btn-lg btn-block" id="sel-file"><svg class="ic"><use href="#i-upload"/></svg>端末の写真から選ぶ</button>
+      <input type="file" id="sel-file-input" accept="image/*" hidden>
+      <div class="section-head"><h2>最近のビフォー</h2></div>
+      <div id="sel-list" class="recent-grid big"></div>
+      <p id="sel-empty" class="muted">一時保持しているビフォーはありません。</p>
+    </div>
+  </main>
+</section>
+
+<!-- 比較 -->
+<section id="s-compare" class="screen dark" hidden>
+  <header class="bar">
+    <button class="icon-btn" id="cmp-back" aria-label="戻る"><svg class="ic"><use href="#i-back"/></svg></button>
+    <div class="bar-center"><div class="bar-title">比較</div><div class="bar-sub" id="cmp-sub"></div></div>
+    <button class="icon-btn" id="cmp-export" aria-label="書き出し・共有" disabled><svg class="ic"><use href="#i-share"/></svg></button>
+  </header>
+  <div class="src-bar">
+    <button class="src-btn" id="src-a"><span>ビフォー</span> <b id="src-a-label">未選択</b></button>
+    <button class="src-btn" id="src-b"><span>アフター</span> <b id="src-b-label">未選択</b></button>
+    <input type="file" id="src-a-input" accept="image/*" hidden>
+    <input type="file" id="src-b-input" accept="image/*" hidden>
+  </div>
+  <div class="tabs" role="tablist" id="cmp-modes">
+    <button class="tab" role="tab" data-mode="side" aria-selected="true">左右</button>
+    <button class="tab" role="tab" data-mode="stack" aria-selected="false">上下</button>
+    <button class="tab" role="tab" data-mode="overlay" aria-selected="false">重ね</button>
+    <button class="tab" role="tab" data-mode="wipe" aria-selected="false">スライド</button>
+    <button class="tab" role="tab" data-mode="toggle" aria-selected="false">切替</button>
+  </div>
+  <div class="cmp-wrap" id="cmp-wrap">
+    <canvas id="cmp-canvas"></canvas>
+    <div class="cmp-empty" id="cmp-empty">上のボタンからビフォーとアフターの写真を選んでください</div>
+    <div class="cmp-hint" id="cmp-hint" hidden></div>
+  </div>
+  <div class="slider-row" id="cmp-opacity-row" hidden>
+    <label for="cmp-opacity">アフターの透過</label>
+    <input type="range" id="cmp-opacity" min="0" max="100" value="50" step="1">
+    <output for="cmp-opacity" id="cmp-opacity-val">50%</output>
+  </div>
+  <div class="tools" id="cmp-tools">
+    <button class="tool" data-tool="swap" id="tool-swap"><svg class="ic"><use href="#i-swap"/></svg>入替</button>
+    <button class="tool" data-tool="hline" aria-pressed="false"><svg class="ic"><use href="#i-hline"/></svg>横線</button>
+    <button class="tool" data-tool="vline" aria-pressed="false"><svg class="ic"><use href="#i-vline"/></svg>縦線</button>
+    <button class="tool" data-tool="angle" aria-pressed="false"><svg class="ic"><use href="#i-angle"/></svg>角度</button>
+    <button class="tool" data-tool="blur" aria-pressed="false"><svg class="ic"><use href="#i-blur"/></svg>ぼかし</button>
+    <button class="tool" data-tool="clear" id="tool-clear"><svg class="ic"><use href="#i-eraser"/></svg>消去</button>
+    <button class="tool" data-tool="fit" id="tool-fit"><svg class="ic"><use href="#i-fit"/></svg>全体</button>
+  </div>
+</section>
+
+<!-- 設定 -->
+<section id="s-settings" class="screen" hidden>
+  <header class="bar">
+    <button class="icon-btn" id="st-back" aria-label="戻る"><svg class="ic"><use href="#i-back"/></svg></button>
+    <div class="bar-center"><div class="bar-title">設定</div></div>
+    <div class="bar-spacer"></div>
+  </header>
+  <main class="content">
+    <div class="content-narrow">
+      <h2>施術院情報</h2>
+      <label class="field"><span>院名(書き出し画像に入ります)</span><input type="text" id="st-clinic" maxlength="40" autocomplete="organization"></label>
+      <div class="field">
+        <span>ロゴ</span>
+        <div class="logo-row">
+          <img id="st-logo-preview" class="logo-preview" alt="ロゴのプレビュー">
+          <button class="btn btn-outline" id="st-logo-pick">画像を選ぶ</button>
+          <button class="btn btn-text btn-danger" id="st-logo-clear">削除</button>
+          <input type="file" id="st-logo-input" accept="image/*" hidden>
+        </div>
+      </div>
+      <label class="field"><span>院名・ロゴの位置</span>
+        <select id="st-logo-pos">
+          <option value="br">下・右寄せ</option>
+          <option value="bl">下・左寄せ</option>
+          <option value="tr">上・右寄せ</option>
+          <option value="tl">上・左寄せ</option>
+        </select>
+      </label>
+
+      <h2>撮影</h2>
+      <label class="check"><input type="checkbox" id="st-seq"><span>連続撮影(向きを順番に撮る)</span></label>
+      <label class="field"><span>向きの並び(読点区切り)</span><input type="text" id="st-views" placeholder="正面、右側面、左側面、背面"></label>
+      <label class="check"><input type="checkbox" id="st-mirror"><span>前面カメラの表示を左右反転する(保存する写真は反転しません)</span></label>
+      <label class="field"><span>撮影解像度</span>
+        <select id="st-res"><option value="std">標準(1920×1080程度)</option><option value="high">高(端末の最大)</option></select>
+      </label>
+
+      <h2>プリセット(縦横比とガイド線)</h2>
+      <p class="muted">横線の位置は撮影画面で黄色いつまみをドラッグして動かせます。</p>
+      <div id="st-presets"></div>
+      <button class="btn btn-outline" id="st-preset-add"><svg class="ic"><use href="#i-plus"/></svg>プリセットを追加</button>
+
+      <h2>一時保持</h2>
+      <label class="check"><input type="checkbox" id="st-delete-used"><span>アフターと比較したビフォーは一時保持から削除する</span></label>
+      <label class="field"><span>ビフォー写真の保持期間</span>
+        <select id="st-retention">
+          <option value="none">残さない</option>
+          <option value="day">当日だけ</option>
+          <option value="7">7日</option>
+          <option value="30">30日</option>
+        </select>
+      </label>
+      <p class="muted">写真はこの端末の中だけに置き、期限が過ぎると自動で削除します。残したい写真は「端末に保存」してください。</p>
+      <button class="btn btn-outline btn-danger" id="st-clear-all"><svg class="ic"><use href="#i-trash"/></svg>一時保持をすべて削除</button>
+
+      <h2>情報</h2>
+      <p class="muted">バージョン <span id="st-version"></span></p>
+      <p class="muted">ソースコード <a href="https://github.com/Yanai-Taketo/reframe" target="_blank" rel="noopener">github.com/Yanai-Taketo/reframe</a></p>
+      <p class="muted">写真と設定はこの端末の中だけに保存され、外部には送信されません。</p>
+      <button class="btn btn-text" id="st-update">更新を確認</button>
+    </div>
+  </main>
+</section>
+
+</div>
+
+<dialog id="dlg-export">
+  <form method="dialog">
+    <h2>書き出し・共有</h2>
+    <label class="field"><span>ビフォーのラベル</span><input type="text" id="ex-label-a" maxlength="40"></label>
+    <label class="field"><span>アフターのラベル</span><input type="text" id="ex-label-b" maxlength="40"></label>
+    <label class="check"><input type="checkbox" id="ex-brand" checked><span>院名・ロゴを入れる</span></label>
+    <label class="field"><span>形式</span><select id="ex-format"><option value="jpeg">JPEG</option><option value="png">PNG</option></select></label>
+    <div class="dlg-actions">
+      <button class="btn btn-outline" value="cancel">キャンセル</button>
+      <button class="btn btn-solid" id="ex-go" value="go">共有・保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-confirm">
+  <form method="dialog">
+    <p id="confirm-text"></p>
+    <div class="dlg-actions">
+      <button class="btn btn-outline" value="cancel">キャンセル</button>
+      <button class="btn btn-solid" id="confirm-ok" value="ok">削除</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" role="status" hidden></div>
+
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
