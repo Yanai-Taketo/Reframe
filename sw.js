@@ -1,4 +1,4 @@
-const VERSION = '1.0.1';
+const VERSION = '1.5.4';
 const CACHE = 'reframe-' + VERSION;
 const ASSETS = [
   './',
@@ -16,10 +16,13 @@ const ASSETS = [
   './icons/icon-512-maskable.png',
   './icons/apple-touch-icon.png',
 ];
+/* キャッシュするのは上の一覧にあるファイルだけ。クエリ文字列は無視してパスで管理する */
+const ASSET_PATHS = new Set(ASSETS.map(u => new URL(u, self.location.href).pathname));
+const INDEX = new URL('./index.html', self.location.href).pathname;
 
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting())
+    caches.open(CACHE).then(cache => cache.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' }))))
   );
 });
 
@@ -31,6 +34,25 @@ self.addEventListener('activate', event => {
   );
 });
 
+/* 新しい版への切り替えは、利用者が「再読み込み」を選んだときに行う */
+self.addEventListener('message', event => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
+});
+
+/* キャッシュがあればすぐ返し、裏で取り直して次回に備える */
+function staleWhileRevalidate(path) {
+  return caches.match(path).then(cached => {
+    const network = fetch(new Request(path, { cache: 'no-cache' })).then(res => {
+      if (res && res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then(cache => cache.put(path, copy));
+      }
+      return res;
+    }).catch(() => cached);
+    return cached || network;
+  });
+}
+
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -38,22 +60,9 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
 
   if (req.mode === 'navigate') {
-    event.respondWith(
-      caches.match('./index.html').then(cached => cached || fetch(req))
-    );
+    event.respondWith(staleWhileRevalidate(INDEX));
     return;
   }
-
-  event.respondWith(
-    caches.match(req).then(cached => {
-      const network = fetch(req).then(res => {
-        if (res && res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then(cache => cache.put(req, copy));
-        }
-        return res;
-      }).catch(() => cached);
-      return cached || network;
-    })
-  );
+  if (!ASSET_PATHS.has(url.pathname)) return;
+  event.respondWith(staleWhileRevalidate(url.pathname));
 });

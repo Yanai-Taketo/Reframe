@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Reframe</title>
 <meta name="description" content="施術前後の写真を同じ構図で撮影し、比較・書き出しするツール">
@@ -17,7 +19,7 @@
 </head>
 <body>
 
-<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" class="sprite" aria-hidden="true">
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
   <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h2M10 12h10M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
   <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
@@ -104,7 +106,7 @@
     <div class="chips" id="cap-chips">
       <button class="chip" id="chip-mode" hidden>写真</button>
       <button class="chip" id="chip-guides" aria-pressed="true">ガイド線</button>
-      <button class="chip" id="chip-timer"><svg class="ic"><use href="#i-timer"/></svg>タイマー オフ</button>
+      <button class="chip" id="chip-timer"><svg class="ic"><use href="#i-timer"/></svg><span id="chip-timer-text">タイマー オフ</span></button>
       <button class="chip" id="chip-level" aria-pressed="false"><svg class="ic"><use href="#i-level"/></svg>水平器</button>
     </div>
     <div class="chips" id="cap-views" role="group" aria-label="向き" hidden></div>
@@ -276,7 +278,7 @@
 
       <h2>情報</h2>
       <p class="muted">バージョン <span id="st-version"></span></p>
-      <p class="muted">ソースコード <a href="https://github.com/Yanai-Taketo/reframe" target="_blank" rel="noopener">github.com/Yanai-Taketo/reframe</a></p>
+      <p class="muted">ソースコード <a href="https://github.com/Yanai-Taketo/reframe" target="_blank" rel="noopener noreferrer">github.com/Yanai-Taketo/reframe</a></p>
       <p class="muted">写真と設定はこの端末の中だけに保存され、外部には送信されません。</p>
       <button class="btn btn-text" id="st-update">更新を確認</button>
     </div>
@@ -288,6 +290,8 @@
 <dialog id="dlg-export">
   <form method="dialog">
     <h2>書き出し・共有</h2>
+    <canvas id="ex-preview" class="ex-preview" aria-label="書き出す画像のプレビュー"></canvas>
+    <p class="muted">写真全体が入ります。画面の拡大・移動は反映されません。顔などを隠すには、比較画面の「ぼかし」を使ってください。</p>
     <label class="field"><span>ビフォーのラベル</span><input type="text" id="ex-label-a" maxlength="40"></label>
     <label class="field"><span>アフターのラベル</span><input type="text" id="ex-label-b" maxlength="40"></label>
     <label class="check"><input type="checkbox" id="ex-brand" checked><span>院名・ロゴを入れる</span></label>

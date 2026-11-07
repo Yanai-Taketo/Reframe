@@ -1,7 +1,7 @@
 import { readImageMeta } from './meta.js';
 
-export const APP_VERSION = '1.0.1';
-export const APP_BUILD = 2;
+export const APP_VERSION = '1.5.4';
+export const APP_BUILD = 9;
 
 const SETTINGS_KEY = 'ba.settings.v1';
 
@@ -44,14 +44,29 @@ function loadSettings() {
   }
   if (!Array.isArray(s.presets) || !s.presets.length) s.presets = clone(DEFAULT_PRESETS);
   s.presets = s.presets.filter(p => p && p.name && Array.isArray(p.ar) && p.ar.length === 2).map(p => ({
-    id: p.id || ('p' + Math.random().toString(36).slice(2, 8)),
+    id: (typeof p.id === 'string' && p.id) ? p.id.slice(0, 20) : ('p' + Math.random().toString(36).slice(2, 8)),
     name: String(p.name).slice(0, 20),
     ar: [Number(p.ar[0]) || 3, Number(p.ar[1]) || 4],
     plumb: !!p.plumb,
     hlines: Array.isArray(p.hlines) ? p.hlines.map(Number).filter(n => n > 0 && n < 1) : [],
   }));
   if (!s.presets.length) s.presets = clone(DEFAULT_PRESETS);
-  if (!Array.isArray(s.views) || !s.views.length) s.views = clone(DEFAULTS.views);
+  if (!Array.isArray(s.views)) s.views = [];
+  s.views = s.views.map(v => String(v).trim().slice(0, 20)).filter(Boolean).slice(0, 8);
+  if (!s.views.length) s.views = clone(DEFAULTS.views);
+  /* 保存されている値が想定の型・範囲でなければ既定値に戻す */
+  s.clinicName = (typeof s.clinicName === 'string' ? s.clinicName : '').trim().slice(0, 40);
+  s.logo = (typeof s.logo === 'string' && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(s.logo)) ? s.logo : null;
+  s.logoPos = ['br', 'bl', 'tr', 'tl'].includes(s.logoPos) ? s.logoPos : 'br';
+  s.retention = ['none', 'day', '7', '30'].includes(String(s.retention)) ? String(s.retention) : DEFAULTS.retention;
+  s.resolution = s.resolution === 'high' ? 'high' : 'std';
+  s.facing = s.facing === 'user' ? 'user' : 'environment';
+  s.overlayMode = s.overlayMode === 'edge' ? 'edge' : 'photo';
+  const opacity = Number(s.overlayOpacity);
+  s.overlayOpacity = Number.isFinite(opacity) ? Math.min(100, Math.max(0, Math.round(opacity))) : DEFAULTS.overlayOpacity;
+  s.timer = [0, 3, 5, 10].includes(Number(s.timer)) ? Number(s.timer) : 0;
+  s.lastPreset = typeof s.lastPreset === 'string' ? s.lastPreset : DEFAULTS.lastPreset;
+  for (const k of ['sequence', 'mirrorFront', 'deleteUsedBefore', 'guidesOn']) if (typeof s[k] !== 'boolean') s[k] = DEFAULTS[k];
   return s;
 }
 
@@ -136,6 +151,10 @@ export async function purgeExpired() {
 }
 
 /* ---------- 画像ユーティリティ ---------- */
+/* 取り込む画像の上限(一辺と総画素数)。スマートフォンのカメラ写真は収まる大きさ */
+const MAX_IMAGE_SIDE = 16384;
+const MAX_IMAGE_PIXELS = 120e6;
+
 export function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -151,11 +170,14 @@ export async function decodeToCanvas(blob, maxSide = 2048) {
     const img = await loadImage(url);
     const w = img.naturalWidth, h = img.naturalHeight;
     if (!w || !h) throw new Error('empty image');
+    if (w > MAX_IMAGE_SIDE || h > MAX_IMAGE_SIDE || w * h > MAX_IMAGE_PIXELS) throw new Error('image too large');
     const s = Math.min(1, maxSide / Math.max(w, h));
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(w * s));
     c.height = Math.max(1, Math.round(h * s));
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    ctx.getImageData(0, 0, 1, 1); // 画素を読み出せない画像(外部参照を含むSVGなど)はここで例外になり、取り込まない
     return c;
   } finally {
     URL.revokeObjectURL(url);

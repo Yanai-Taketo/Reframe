@@ -8,6 +8,14 @@ import { stampBytes, newImageId } from './meta.js';
 import { Camera, cameraErrorMessage, makeEdgeCanvas, LevelMeter, Guides } from './camera.js';
 import { CompareView, exportCompare, Adjuster } from './compare.js';
 
+/* 他のサイトの iframe に埋め込まれた状態では動かさない */
+if (window.top !== window.self) {
+  document.body.replaceChildren();
+  document.body.textContent = 'このページは埋め込み表示では使えません。';
+  try { window.top.location.replace(location.href); } catch (e) { /* 遷移を止められたときはこのまま */ }
+  throw new Error('Reframe must not run inside a frame');
+}
+
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const SOFTWARE = 'Reframe ' + APP_VERSION;
@@ -70,17 +78,49 @@ function setRecord(target, rec) {
   if (rec && !rec.url) rec.url = URL.createObjectURL(rec.blob);
   state[target] = rec;
 }
+/* 画像の一時URLと展開済みの画像を手放す(元データ blob は残る) */
+function releaseRecord(rec) {
+  if (!rec) return;
+  if (rec.url) { URL.revokeObjectURL(rec.url); rec.url = null; }
+  delete rec.canvas;
+  delete rec.edge;
+}
+/* 新しい作業を始める前に、直前の作業で使った写真を画面とメモリから外す */
+function clearWorkingSet() {
+  for (const k of ['before', 'after', 'captured']) { releaseRecord(state[k]); state[k] = null; }
+  state.lastShotThumb = null;
+  $('pv-img').removeAttribute('src');
+  $('cap-last-img').removeAttribute('src');
+  $('ov-img').removeAttribute('src');
+  const edge = $('ov-edge');
+  edge.width = edge.width;
+  cmp.clear();
+}
+/* 選んだビフォーに重ねてアフターを撮る。残っていたアフターは使わない */
+function startAfterFlow(rec) {
+  for (const k of ['after', 'captured']) { if (state[k] !== rec) releaseRecord(state[k]); state[k] = null; }
+  state.lastShotThumb = null;
+  state.mode = 'after';
+  setRecord('before', rec);
+  go('capture');
+}
 function recLabel(rec) {
   if (!rec) return '';
   if (rec.label) return rec.label;
   return fmtDate(rec.createdAt) + (rec.view ? ' ' + rec.view : '');
+}
+/* 写真の選択ボタンに出す名前。端末の写真はファイル名で区別できるようにする */
+function srcLabel(rec) {
+  if (!rec) return '未選択';
+  return rec.fileName || recLabel(rec);
 }
 async function recordFromFile(file) {
   const canvas = await decodeToCanvas(file, 2048);
   const exif = await readExifDate(file);
   return {
     blob: file, canvas, w: canvas.width, h: canvas.height,
-    label: exif || (file.name || '').replace(/\.[^.]+$/, '') || fmtDate(file.lastModified || Date.now()),
+    label: exif || fmtDate(file.lastModified || Date.now()),
+    fileName: (file.name || '').replace(/\.[^.]+$/, ''),
     createdAt: file.lastModified || Date.now(), view: '', preset: '', kind: 'file',
   };
 }
@@ -115,9 +155,9 @@ hooks.home = {
   },
 };
 $('home-settings').onclick = () => go('settings');
-$('home-before').onclick = () => { state.mode = 'before'; state.viewIndex = 0; state.doneViews = new Set(); go('capture'); };
-$('home-after').onclick = () => { state.mode = 'after'; go('select'); };
-$('home-compare').onclick = () => { go('compare'); };
+$('home-before').onclick = () => { clearWorkingSet(); state.mode = 'before'; state.viewIndex = 0; state.doneViews = new Set(); go('capture'); };
+$('home-after').onclick = () => { clearWorkingSet(); state.mode = 'after'; go('select'); };
+$('home-compare').onclick = () => { clearWorkingSet(); go('compare'); };
 $('recent-clear').onclick = async () => {
   if (await confirmDialog('一時保持しているビフォー写真をすべて削除します。端末に保存した写真は消えません。')) {
     await clearBefores().catch(() => {});
@@ -137,11 +177,7 @@ async function renderRecent() {
   $('recent-note').textContent = retentionText();
   $('recent-empty').hidden = items.length > 0;
   $('recent-clear').hidden = items.length === 0;
-  for (const it of items) list.appendChild(recentTile(it, async () => {
-    state.mode = 'after';
-    setRecord('before', recordFromStored(it));
-    go('capture');
-  }, async () => {
+  for (const it of items) list.appendChild(recentTile(it, () => startAfterFlow(recordFromStored(it)), async () => {
     await deleteBefore(it.id).catch(() => {});
     renderRecent();
   }));
@@ -293,7 +329,7 @@ function renderGuides() {
 
 function updateTimerChip() {
   const t = settings.timer;
-  $('chip-timer').innerHTML = '<svg class="ic"><use href="#i-timer"/></svg>' + (t ? `タイマー ${t}秒` : 'タイマー オフ');
+  $('chip-timer-text').textContent = t ? `タイマー ${t}秒` : 'タイマー オフ';
 }
 
 function setOverlayOpacity(v) {
@@ -343,8 +379,9 @@ async function startCamera() {
     return;
   }
   try {
-    await cam.start(settings.facing, settings.resolution === 'high');
-    $('cam').classList.toggle('mirror', cam.facing === 'user' && settings.mirrorFront);
+    const stream = await cam.start(settings.facing, settings.resolution === 'high');
+    if (current !== 'capture' || document.hidden) { cam.stop(); return; }
+    if (stream) $('cam').classList.toggle('mirror', cam.facing === 'user' && settings.mirrorFront);
   } catch (e) {
     showCamMsg(cameraErrorMessage(e));
   }
@@ -364,8 +401,11 @@ hooks.capture = {
     $('chip-level').setAttribute('aria-pressed', 'false');
     $('hud-level').hidden = true;
     $('level-ui').hidden = true;
-    if (after) await setupOverlay();
-    else { $('ov-img').hidden = true; $('ov-edge').hidden = true; }
+    if (after) {
+      try { await setupOverlay(); }
+      catch (e) { $('ov-edge').hidden = true; toast('輪郭を作成できませんでした。'); }
+      if (current !== 'capture') return;
+    } else { $('ov-img').hidden = true; $('ov-edge').hidden = true; }
     layoutVF(); renderGuides(); updateHud();
     await startCamera();
   },
@@ -382,12 +422,23 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) cam.stop();
   else startCamera();
 });
+/* 画面に戻ってきたときにも期限切れの写真を消す */
+async function purgeAndRefresh() {
+  await purgeExpired();
+  if (current === 'home') renderRecent();
+  else if (current === 'select') renderSelectList();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) purgeAndRefresh(); });
+window.addEventListener('pageshow', e => { if (e.persisted) purgeAndRefresh(); });
 
 $('cap-back').onclick = () => back();
 $('cap-switch').onclick = async () => {
+  const b = $('cap-switch');
+  if (b.disabled) return;
+  b.disabled = true;
   settings.facing = settings.facing === 'user' ? 'environment' : 'user';
   saveSettings();
-  await startCamera();
+  try { await startCamera(); } finally { b.disabled = false; }
 };
 $('cap-change-before').onclick = () => go('select');
 $('chip-guides').onclick = () => { settings.guidesOn = !settings.guidesOn; saveSettings(); renderGuides(); };
@@ -399,7 +450,12 @@ $('chip-timer').onclick = () => {
 $('chip-mode').onclick = async () => {
   settings.overlayMode = settings.overlayMode === 'edge' ? 'photo' : 'edge';
   saveSettings();
-  await setupOverlay();
+  try { await setupOverlay(); }
+  catch (e) {
+    settings.overlayMode = 'photo'; saveSettings();
+    try { await setupOverlay(); } catch (e2) { /* 写真の重ねも出せなければそのまま */ }
+    toast('輪郭を作成できませんでした。');
+  }
   updateHud();
 };
 $('ov-opacity').oninput = e => { setOverlayOpacity(Number(e.target.value)); };
@@ -445,7 +501,9 @@ function cancelCountdown() {
   $('shutter').disabled = !$('cam-msg').hidden;
 }
 
+let capturing = false;
 $('shutter').onclick = () => {
+  if (capturing) return;
   if (countdownTimer) { cancelCountdown(); return; }
   const t = settings.timer;
   if (!t) { doCapture(); return; }
@@ -460,29 +518,40 @@ $('shutter').onclick = () => {
 };
 
 async function doCapture() {
+  if (capturing) return;
   const c = cam.capture(currentAspect());
   if (!c) { toast('カメラの映像がまだ表示されていません。'); return; }
-  const flash = $('flash');
-  flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on');
-  const presetName = state.mode === 'after' ? (state.before.preset || '') : currentPreset().name;
-  const view = currentViewLabel();
-  const { blob, imageId, createdAt } = await stampedJpeg(c, state.mode, presetName, view);
-  const rec = {
-    blob, canvas: c, w: c.width, h: c.height, createdAt, imageId,
-    preset: presetName, view, kind: state.mode,
-  };
-  rec.thumb = makeThumb(c, 320);
-  state.lastShotThumb = rec.thumb;
-  if (state.mode === 'before') {
-    if (settings.retention !== 'none') {
-      try { rec.id = await addBefore(rec); } catch (e) { toast('一時保持に保存できませんでした。「端末に保存」で保存してください。'); }
+  capturing = true;
+  $('shutter').disabled = true;
+  try {
+    const flash = $('flash');
+    flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on');
+    const presetName = state.mode === 'after' ? (state.before.preset || '') : currentPreset().name;
+    const view = currentViewLabel();
+    const { blob, imageId, createdAt } = await stampedJpeg(c, state.mode, presetName, view);
+    const rec = {
+      blob, canvas: c, w: c.width, h: c.height, createdAt, imageId,
+      preset: presetName, view, kind: state.mode,
+    };
+    rec.thumb = makeThumb(c, 320);
+    state.lastShotThumb = rec.thumb;
+    if (state.mode === 'after') {
+      rec.pairedBefore = state.before; // どのビフォーに対して撮ったか。比較後の自動削除で照合する
+    } else {
+      if (settings.retention !== 'none') {
+        try { rec.id = await addBefore(rec); } catch (e) { toast('一時保持に保存できませんでした。「端末に保存」で保存してください。'); }
+      }
+      if (settings.sequence) state.doneViews.add(state.viewIndex);
+      rec.fresh = true; // 「撮り直す」で一時保持から消せる状態。ホームへ進むか続けて撮ると確定する
+      state.lastBefore = rec;
+      delete rec.canvas;
     }
-    if (settings.sequence) state.doneViews.add(state.viewIndex);
-    state.lastBefore = rec;
-    delete rec.canvas;
+    setRecord('captured', rec);
+    go('preview');
+  } finally {
+    capturing = false;
+    $('shutter').disabled = !$('cam-msg').hidden;
   }
-  setRecord('captured', rec);
-  go('preview');
 }
 
 /* ---------- プレビュー ---------- */
@@ -499,18 +568,32 @@ hooks.preview = {
     $('pv-primary').textContent = after ? '比較へ' : 'ホームへ';
   },
 };
+/* 撮ったばかりのビフォーを一時保持から取り消す */
+async function discardCaptured() {
+  const r = state.captured;
+  if (!r || r.kind !== 'before' || !r.fresh) return;
+  r.fresh = false;
+  if (r.id) { await deleteBefore(r.id).catch(() => {}); delete r.id; }
+  if (state.lastBefore === r) state.lastBefore = null;
+  if (state.lastShotThumb === r.thumb) state.lastShotThumb = null;
+  if (settings.sequence) state.doneViews.delete(state.viewIndex);
+  $('pv-img').removeAttribute('src');
+  releaseRecord(r);
+  state.captured = null;
+}
+function keepCaptured() { if (state.captured) state.captured.fresh = false; }
 $('pv-back').onclick = () => back();
-$('pv-retake').onclick = () => back();
+$('pv-retake').onclick = async () => { await discardCaptured(); back(); };
 $('pv-save').onclick = () => {
   const r = state.captured;
   const name = (r.kind === 'after' ? 'after_' : 'before_') + fileStamp(r.createdAt) + '.jpg';
   shareOrDownload(r.blob, name).then(res => { if (res === 'downloaded') toast('ダウンロードしました。'); });
 };
-$('pv-next').onclick = () => { state.viewIndex = Math.min(state.viewIndex + 1, settings.views.length - 1); back(); };
+$('pv-next').onclick = () => { keepCaptured(); state.viewIndex = Math.min(state.viewIndex + 1, settings.views.length - 1); back(); };
 $('pv-adjust').onclick = () => go('adjust');
 $('pv-primary').onclick = async () => {
-  if (state.captured.kind === 'after') { await useCapturedAsAfter(); go('compare'); }
-  else go('home');
+  if (state.captured.kind === 'after') { await useCapturedAsAfter(); await releaseUsedBefore(); go('compare'); }
+  else { keepCaptured(); go('home'); }
 };
 async function useCapturedAsAfter() {
   const r = state.captured;
@@ -544,11 +627,12 @@ $('adj-ok').onclick = async () => {
   const rec = { ...r, canvas: out, blob, w: out.width, h: out.height, url: null, imageId };
   setRecord('captured', rec);
   setRecord('after', rec);
+  await releaseUsedBefore();
   go('compare');
 };
 
 /* ---------- ビフォー選択 ---------- */
-hooks.select = { enter() { renderSelectList(); } };
+hooks.select = { async enter() { await purgeExpired(); renderSelectList(); } };
 $('sel-back').onclick = () => back();
 $('sel-file').onclick = () => $('sel-file-input').click();
 $('sel-file-input').onchange = async e => {
@@ -556,10 +640,7 @@ $('sel-file-input').onchange = async e => {
   e.target.value = '';
   if (!f) return;
   try {
-    const rec = await recordFromFile(f);
-    state.mode = 'after';
-    setRecord('before', rec);
-    go('capture');
+    startAfterFlow(await recordFromFile(f));
   } catch (err) {
     toast('この画像を読み込めませんでした。');
   }
@@ -571,13 +652,9 @@ async function renderSelectList() {
   try { items = await listBefores(); } catch (e) { items = []; }
   if (state.lastBefore && !state.lastBefore.id) {
     const lb = state.lastBefore;
-    list.appendChild(recentTile({ ...lb, id: null }, () => { state.mode = 'after'; setRecord('before', lb); go('capture'); }, null));
+    list.appendChild(recentTile({ ...lb, id: null }, () => startAfterFlow(lb), null));
   }
-  for (const it of items) list.appendChild(recentTile(it, () => {
-    state.mode = 'after';
-    setRecord('before', recordFromStored(it));
-    go('capture');
-  }, null));
+  for (const it of items) list.appendChild(recentTile(it, () => startAfterFlow(recordFromStored(it)), null));
   $('sel-empty').hidden = list.children.length > 0;
 }
 
@@ -592,17 +669,18 @@ hooks.compare = {
     $('cmp-opacity-row').hidden = currentMode() !== 'overlay';
     await refreshCompare();
     cmp.resize();
-    await releaseUsedBefore();
   },
 };
+/* アフターを撮ったビフォーを一時保持から外す。撮ったときに記録した組み合わせが一致するときだけ */
 async function releaseUsedBefore() {
   const a = state.before, b = state.after;
-  if (!settings.deleteUsedBefore || !a || !b || b.kind !== 'after' || !a.id) return;
+  if (!settings.deleteUsedBefore || !a || !b || a.kind !== 'before' || b.kind !== 'after' || b.pairedBefore !== a) return;
+  a.used = true;
+  if (state.lastBefore === a) state.lastBefore = null;
+  if (!a.id) return;
   try {
     await deleteBefore(a.id);
     delete a.id;
-    a.used = true;
-    if (state.lastBefore === a) state.lastBefore = null;
     toast('比較に使ったビフォーを一時保持から削除しました。');
   } catch (e) { /* 削除できなくても比較は続けられる */ }
 }
@@ -612,8 +690,8 @@ function currentMode() {
 }
 async function refreshCompare() {
   const a = state.before, b = state.after;
-  $('src-a-label').textContent = a ? recLabel(a) : '未選択';
-  $('src-b-label').textContent = b ? recLabel(b) : '未選択';
+  $('src-a-label').textContent = srcLabel(a);
+  $('src-b-label').textContent = srcLabel(b);
   const ready = !!(a && b);
   $('cmp-export').disabled = !ready;
   $('cmp-empty').hidden = ready;
@@ -675,8 +753,8 @@ function refreshLabelsOnly() {
   const a = state.before, b = state.after;
   cmp.labels = compareLabels();
   cmp.render();
-  $('src-a-label').textContent = a ? recLabel(a) : '未選択';
-  $('src-b-label').textContent = b ? recLabel(b) : '未選択';
+  $('src-a-label').textContent = srcLabel(a);
+  $('src-b-label').textContent = srcLabel(b);
   $('cmp-sub').textContent = (a && b) ? `${recLabel(a)} / ${recLabel(b)}` : '';
 }
 function updateHint() {
@@ -694,30 +772,48 @@ function updateHint() {
   h.hidden = !text || !cmp.ready;
 }
 
+function exportOptions() {
+  const brand = $('ex-brand').checked ? { name: settings.clinicName, logo: brandImg, pos: settings.logoPos } : null;
+  return { labelA: $('ex-label-a').value, labelB: $('ex-label-b').value, brand };
+}
+/* 書き出す画像をダイアログに縮小表示する */
+function renderExportPreview() {
+  const pv = $('ex-preview');
+  let out;
+  try { out = exportCompare(cmp, exportOptions()); } catch (err) { pv.hidden = true; return; }
+  const s = Math.min(1, 640 / Math.max(out.width, out.height));
+  pv.width = Math.max(1, Math.round(out.width * s));
+  pv.height = Math.max(1, Math.round(out.height * s));
+  pv.getContext('2d').drawImage(out, 0, 0, pv.width, pv.height);
+  pv.hidden = false;
+}
 $('cmp-export').onclick = () => {
   if (!cmp.ready) return;
   $('ex-label-a').value = cmp.labels.a;
   $('ex-label-b').value = cmp.labels.b;
   $('ex-brand').checked = !!(settings.clinicName || settings.logo);
   $('ex-brand').disabled = !(settings.clinicName || settings.logo);
+  renderExportPreview();
   $('dlg-export').showModal();
 };
+$('ex-label-a').onchange = renderExportPreview;
+$('ex-label-b').onchange = renderExportPreview;
+$('ex-brand').onchange = renderExportPreview;
 $('ex-go').onclick = e => {
   e.preventDefault();
   const fmt = $('ex-format').value;
-  const brand = $('ex-brand').checked ? { name: settings.clinicName, logo: brandImg, pos: settings.logoPos } : null;
-  let canvas;
+  const type = fmt === 'png' ? 'image/png' : 'image/jpeg';
+  let dataURL;
   try {
-    canvas = exportCompare(cmp, { labelA: $('ex-label-a').value, labelB: $('ex-label-b').value, brand });
+    dataURL = exportCompare(cmp, exportOptions()).toDataURL(type, 0.92);
   } catch (err) {
     toast('画像を作成できませんでした。'); return;
   }
-  const type = fmt === 'png' ? 'image/png' : 'image/jpeg';
   const id = newImageId();
   const now = new Date();
   const a = state.before, b = state.after;
   const detail = `${metaItem('before', a.createdAt, a.preset, a.view)} / ${metaItem('after', b.createdAt, b.preset, b.view)}`;
-  let { bytes } = dataURLToBytes(canvas.toDataURL(type, 0.92));
+  let { bytes } = dataURLToBytes(dataURL);
   try {
     bytes = stampBytes(bytes, { software: SOFTWARE, id, date: now, kind: 'compare', build: APP_BUILD, description: DESC_COMPARE, detail });
   } catch (err) { /* メタデータが付かなくても画像は書き出せる */ }
@@ -777,7 +873,15 @@ $('st-views').onchange = e => {
 };
 $('st-mirror').onchange = e => { settings.mirrorFront = e.target.checked; saveSettings(); };
 $('st-res').onchange = e => { settings.resolution = e.target.value; saveSettings(); };
-$('st-retention').onchange = e => { settings.retention = e.target.value; saveSettings(); };
+$('st-retention').onchange = async e => {
+  const prev = settings.retention, next = e.target.value;
+  if (next === 'none' && prev !== 'none') {
+    if (!await confirmDialog('「残さない」にすると、一時保持している写真をすべて削除します。', '変更')) { e.target.value = prev; return; }
+  }
+  settings.retention = next;
+  saveSettings();
+  await purgeExpired();
+};
 $('st-delete-used').onchange = e => { settings.deleteUsedBefore = e.target.checked; saveSettings(); };
 $('st-clear-all').onclick = async () => {
   if (await confirmDialog('一時保持しているビフォー写真をすべて削除します。端末に保存した写真は消えません。')) {
@@ -789,8 +893,10 @@ $('st-update').onclick = async () => {
   if (!('serviceWorker' in navigator)) { toast('このブラウザでは更新確認を使えません。'); return; }
   const reg = await navigator.serviceWorker.getRegistration();
   if (!reg) { toast('更新情報を取得できませんでした。'); return; }
-  try { await reg.update(); toast('最新の状態を確認しました。更新があれば通知します。'); }
-  catch (e) { toast('更新を確認できませんでした。通信状態を確認してください。'); }
+  try { await reg.update(); }
+  catch (e) { toast('更新を確認できませんでした。通信状態を確認してください。'); return; }
+  if (reg.waiting) offerUpdate(reg);
+  else toast('最新の状態を確認しました。更新があれば通知します。');
 };
 
 const AR_OPTIONS = [[3, 4], [1, 1], [4, 5], [2, 3], [9, 16], [4, 3], [16, 9]];
@@ -858,17 +964,26 @@ $('st-preset-add').onclick = () => {
 };
 
 /* ---------- Service Worker ---------- */
+let reloadOnControl = false;
+/* 新しい版が待機中なら知らせる。切り替えと再読み込みは利用者が「再読み込み」を押したときに行う */
+function offerUpdate(reg) {
+  const waiting = reg.waiting;
+  if (!waiting) return;
+  toast('新しいバージョンがあります。', { label: '再読み込み', onClick: () => { reloadOnControl = true; waiting.postMessage('SKIP_WAITING'); } });
+}
 async function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   try {
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloadOnControl) { reloadOnControl = false; location.reload(); }
+    });
     const reg = await navigator.serviceWorker.register('./sw.js');
+    offerUpdate(reg);
     reg.addEventListener('updatefound', () => {
       const nw = reg.installing;
       if (!nw) return;
       nw.addEventListener('statechange', () => {
-        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-          toast('新しいバージョンがあります。', { label: '再読み込み', onClick: () => location.reload() });
-        }
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(reg);
       });
     });
   } catch (e) { /* 登録できなくてもアプリは動作する */ }
