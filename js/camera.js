@@ -4,23 +4,29 @@ export class Camera {
     this.video = video;
     this.stream = null;
     this.facing = 'environment';
+    this._gen = 0; // start()/stop() のたびに進める番号。古い起動結果を捨てるために使う
   }
 
   get active() { return !!this.stream; }
 
   async start(facing = 'environment', highRes = false) {
     this.stop();
+    const gen = ++this._gen;
     const size = highRes ? { width: { ideal: 3840 }, height: { ideal: 2160 } } : { width: { ideal: 1920 }, height: { ideal: 1080 } };
     const base = { audio: false, video: { facingMode: { ideal: facing }, ...size } };
+    let stream;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia(base);
+      stream = await navigator.mediaDevices.getUserMedia(base);
     } catch (e) {
       if (e && (e.name === 'OverconstrainedError' || e.name === 'ConstraintNotSatisfiedError')) {
-        this.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+        stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
       } else {
         throw e;
       }
     }
+    /* 待っている間に stop() や別の start() が呼ばれていたら、この映像は使わずに止める */
+    if (gen !== this._gen) { stream.getTracks().forEach(t => t.stop()); return null; }
+    this.stream = stream;
     this.facing = facing;
     const track = this.stream.getVideoTracks()[0];
     if (track && track.getSettings) {
@@ -39,6 +45,7 @@ export class Camera {
   }
 
   stop() {
+    this._gen++;
     if (this.stream) {
       this.stream.getTracks().forEach(t => t.stop());
       this.stream = null;
