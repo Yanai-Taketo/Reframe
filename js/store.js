@@ -1,7 +1,7 @@
 import { readImageMeta } from './meta.js';
 
-export const APP_VERSION = '1.5.3';
-export const APP_BUILD = 8;
+export const APP_VERSION = '1.0.0';
+export const APP_BUILD = 1;
 
 const SETTINGS_KEY = 'ba.settings.v1';
 
